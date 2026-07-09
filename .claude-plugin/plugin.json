@@ -1,12 +1,12 @@
 {
   "name": "atlas",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Work with Atlas CMS from Claude Code: bundles the Atlas MCP server (read/write content via tools) and the atlas-cms skill that teaches agents when and how to use the MCP tools, the @latellu/atlas-sdk delivery/management clients, and the @latellu/atlas-cli type generator.",
   "author": {
     "name": "Latellu",
     "url": "https://github.com/tenriajeng"
   },
-  "homepage": "https://docs.atlas.latellu.com/docs/claude-code",
+  "homepage": "https://docs.atlas.latellu.com/docs/agent-skill",
   "repository": "https://github.com/tenriajeng/atlas-agent-skills",
   "license": "MIT",
   "keywords": ["atlas", "cms", "headless-cms", "mcp", "sdk"]

@@ -1,10 +1,10 @@
 {
   "name": "@latellu/atlas-agent-skills",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Agent skill + MCP configuration for Atlas CMS. Works as a Claude Code plugin and as plain markdown guidance for any AI coding agent (Cursor, Codex, opencode, Gemini CLI, ...).",
   "license": "MIT",
   "author": "Latellu (https://github.com/tenriajeng)",
-  "homepage": "https://docs.atlas.latellu.com/docs/claude-code",
+  "homepage": "https://docs.atlas.latellu.com/docs/agent-skill",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tenriajeng/atlas-agent-skills.git"

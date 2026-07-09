@@ -18,7 +18,7 @@ export ATLAS_LIVE_API_KEY="atlas_live_xxx..."   # read tools
 export ATLAS_MGMT_API_KEY="atlas_mgmt_xxx..."   # write tools
 ```
 
-Create keys at [cms.atlas.latellu.com/dashboard/api-keys](https://cms.atlas.latellu.com/dashboard/api-keys). Full guide: [docs.atlas.latellu.com/docs/claude-code](https://docs.atlas.latellu.com/docs/claude-code).
+Create keys at [cms.atlas.latellu.com/dashboard/api-keys](https://cms.atlas.latellu.com/dashboard/api-keys). Full guide: [docs.atlas.latellu.com/docs/agent-skill](https://docs.atlas.latellu.com/docs/agent-skill).
 
 ## Other agents (Cursor, Codex, opencode, Gemini CLI, ...)
 
