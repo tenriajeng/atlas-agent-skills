@@ -38,9 +38,13 @@ Then point your agent at the skill (via `AGENTS.md`, Cursor rules, etc.) and reg
 | `.claude-plugin/` | Claude Code plugin + marketplace manifests |
 | `adapters/other-agents.md` | Setup for non-Claude agents |
 
-## Releasing
+## Releasing (manual)
 
-Bump `version` in `package.json` (and `.claude-plugin/plugin.json`), tag `vX.Y.Z`, push the tag — CI publishes to npm. The Claude Code marketplace resolves the plugin from npm, so users pick up the new version on `claude plugin marketplace update latellu`.
+1. Bump `version` in `package.json` **and** `.claude-plugin/plugin.json` (keep them equal)
+2. `npm publish` (from an authenticated machine)
+3. `git tag vX.Y.Z && git push && git push --tags`
+
+The Claude Code marketplace resolves the plugin from npm, so users pick up the new version on `claude plugin marketplace update latellu`.
 
 ## License
 

@@ -1,82 +1,176 @@
 # SDK delivery client (read)
 
+`@latellu/atlas-sdk` — typed, zero-dependency read client for `/api/v1/public`.
+Node 18+ (uses global `fetch`). ESM only.
+
 ```bash
-npm install @latellu/atlas-sdk        # Node 18+ (uses global fetch)
+npm install @latellu/atlas-sdk
 ```
 
-## Canonical setup (Next.js thin adapter)
+## Client setup
 
-Keep one server-only adapter, e.g. `lib/atlas.ts`:
+```ts
+import { createClient } from "@latellu/atlas-sdk";
+
+const atlas = createClient<AtlasContentTypes>({
+  url: "https://api.atlas.latellu.com", // required — SDK reads NO env vars itself
+  apiKey: "atlas_live_...",             // required — delivery key
+  fetchImpl: customFetch,               // optional — see "Caching" below
+});
+```
+
+- `createClient` **throws synchronously** (`AtlasError`) if `url` or `apiKey` is missing.
+- The generic `<AtlasContentTypes>` comes from CLI codegen (`cli-typegen.md`); without
+  it, `entry.data` is `Record<string, unknown>`.
+- All requests go to `${url}/api/v1/public/*` with header `X-API-Key`.
+
+### Canonical Next.js thin adapter
+
+Keep one server-only adapter (pattern used by all official Atlas examples), e.g.
+`lib/atlas.ts`:
 
 ```ts
 import "server-only";
 import { createClient } from "@latellu/atlas-sdk";
-import type { AtlasContentTypes } from "./atlas.types"; // generated — see cli-typegen.md
+import type { AtlasContentTypes } from "./atlas.types";
 
-// The SDK sets NO cache directive. In Next.js you must decide caching yourself
-// via a custom fetchImpl, or Next's defaults for un-annotated fetch apply.
 const noStoreFetch: typeof fetch = (input, init) =>
-  fetch(input, { ...init, cache: "no-store" }); // or next: { revalidate: 60 }
+  fetch(input, { ...init, cache: "no-store" });
 
 export const atlas = createClient<AtlasContentTypes>({
-  url: process.env.ATLAS_BASE_URL ?? "",     // https://api.atlas.latellu.com
-  apiKey: process.env.ATLAS_API_KEY ?? "",   // atlas_live_...
+  url: process.env.ATLAS_BASE_URL ?? "",
+  apiKey: process.env.ATLAS_API_KEY ?? "",
   fetchImpl: noStoreFetch,
 });
 ```
 
-With `no-store`, pair route files with `export const dynamic = "force-dynamic"` so
-dashboard edits appear immediately. The SDK reads no env vars itself — `url`/`apiKey`
-must be passed explicitly. `createClient` throws synchronously if either is missing.
+### Caching — the SDK deliberately has no knob
 
-## Surface
+The SDK issues plain `fetch(url, { headers })` with **no cache directive**. In Next.js
+App Router this means caching behavior is whatever Next's defaults do for un-annotated
+fetch (varies by version/runtime). Decide explicitly via `fetchImpl`:
+
+| Goal | fetchImpl |
+|---|---|
+| Dashboard edits appear immediately (no SSG) | `cache: "no-store"` + `export const dynamic = "force-dynamic"` in routes |
+| ISR-style freshness | `next: { revalidate: 60 }` |
+| Astro/SSR outside Next | default fetch is fine (no framework cache layer) |
+
+## Full surface
 
 ```ts
-const { items, total, page, pageSize } =
-  await atlas.entries("news-article").list({ locale: "en", page: 1, limit: 20, sort: "created_at:desc" });
-
-const entry = await atlas.entries("news-article").get("hello-world", { locale: "en" }); // null on 404
-// entry: { id, slug, status, published_at, data }  — data is already parsed to an object
-
-const pages = await atlas.pages.list({ locale: "en", page: 1, limit: 20 }); // summaries, no blocks
-const pageDetail = await atlas.pages.get("home", { locale: "en" });         // null on 404
-// pageDetail: { id, slug, status, seo, blocks: [{ id, type, position, data }] }
-
-const asset = await atlas.media.get(mediaId);      // null on 404
-const raw = await atlas.raw.get<T>("/some/path");  // escape hatch for unwrapped /api/v1/public paths
+interface AtlasClient<TSchema> {
+  entries<K extends keyof TSchema>(type: K): EntriesResource<TSchema[K]>;
+  pages: PagesResource;
+  media: MediaResource;
+  raw: Requester;  // low-level escape hatch
+}
 ```
 
-Semantics the SDK handles for you (don't re-implement):
-- `entry.data`, page `seo`, and block `data` arrive from the API as JSON strings — the
-  SDK parses them.
-- Locale merge is field-by-field: translated fields overlay base data; untranslated
-  fields fall back to the base locale.
-- Page blocks are always returned sorted by `position`, regardless of API order.
+### Entries
 
-Errors: non-404 failures throw `AtlasError` (`{ status?, code?, message }`). `get()`
-methods return `null` only for 404.
+```ts
+const res = await atlas.entries("news-article").list({
+  locale: "en",              // optional
+  page: 1, limit: 20,        // offset pagination (limit max 100, page max 1000)
+  sort: "created_at:desc",   // "<field>:<asc|desc>", e.g. "published_at:desc"
+});
+// res: ListResult<AtlasEntry<T>> = { items, total, page, pageSize }
+
+const entry = await atlas.entries("news-article").get("hello-world", { locale: "en" });
+// AtlasEntry<T> = { id, slug, status, published_at: string | null, data: T }
+// null on 404; throws AtlasError on anything else
+```
+
+What the SDK does for you here (do not re-implement):
+- `data` arrives from the API as a **JSON string**; the SDK parses it to an object
+  (empty string → `{}`).
+- With `locale`, `get()` merges the matching `translations[].data` over the base `data`
+  field-by-field (`{ ...base, ...translation }`) — untranslated fields keep base values.
+
+### Pages
+
+```ts
+const list = await atlas.pages.list({ locale: "en", page: 1, limit: 20 });
+// items: AtlasPageSummary[] — lightweight rows { id, slug, status, ... }, NO blocks
+
+const page = await atlas.pages.get("home", { locale: "en" }); // null on 404
+// AtlasPage = { id, slug, status, seo: AtlasPageSEO, blocks: AtlasBlock[] }
+// AtlasPageSEO = { title?, description?, keywords?, og_image?, canonical?, ... }
+// AtlasBlock  = { id, type, position, data: Record<string, unknown> }
+```
+
+`pages.get` semantics: SEO is overlaid with `seo_translations` for the locale
+(field-level fallback); each block's `data` is overlaid with its matching
+`block_translations` row; **blocks are always returned sorted by `position`** regardless
+of API order; `seo`/block `data` JSON strings are parsed defensively (malformed JSON
+silently becomes `{}` — a corrupt block fails silent, not loud).
+
+### Media & raw
+
+```ts
+const asset = await atlas.media.get(id);   // MediaAsset = { id, ...unknown } | null on 404
+
+const { data, meta } = await atlas.raw.get<T>("/entries", { type: "article", cursor });
+// any /api/v1/public path; use for things the SDK doesn't wrap — e.g. CURSOR pagination
+// (entries.list only exposes page/limit; past page 1000 the API returns PAGE_TOO_DEEP,
+//  so deep datasets must iterate meta.next_cursor via raw.get)
+```
+
+## Error handling
+
+```ts
+import { AtlasError } from "@latellu/atlas-sdk";
+
+try {
+  const items = await atlas.entries("article").list();
+} catch (e) {
+  if (e instanceof AtlasError) {
+    e.status; // HTTP status (undefined for network errors)
+    e.code;   // "UNAUTHORIZED" | "FORBIDDEN" | "PAGE_TOO_DEEP" | ...
+  }
+}
+```
+
+Only `get()` methods special-case 404 → `null`. `list()` never returns null. Network
+failures are wrapped in `AtlasError` with the URL in the message.
 
 ## Rendering blocks
 
-Dispatch on `block.type` with an explicit fallback so new block types added in the
-dashboard never crash the site:
+Dispatch on `block.type` with an explicit fallback so block types added later in the
+dashboard never crash the site — adding a section type then only requires registering a
+component here:
 
 ```tsx
 export function BlockRenderer({ blocks }: { blocks: AtlasBlock[] }) {
   return blocks.map((block) => {
     switch (block.type) {
-      case "hero":   return <HeroBlock key={block.id} data={block.data} />;
-      case "faq":    return <FaqBlock key={block.id} data={block.data} />;
-      default:       return null; // or an <UnknownBlock /> placeholder
+      case "hero": return <HeroBlock key={block.id} data={block.data} />;
+      case "faq":  return <FaqBlock key={block.id} data={block.data} />;
+      default:     return <UnknownBlock key={block.id} type={block.type} />; // never throw
     }
   });
 }
 ```
 
-## Limits
+## Resolving reference fields
 
-- Draft preview is not yet supported by the SDK — delivery keys see published content only.
-- There is no `search` or `schema` namespace on the client; schema introspection is the
-  CLI's job (`cli-typegen.md`).
-- `image` / `relation` / `content_type_reference` field values are raw string IDs/slugs —
-  resolve with `atlas.media.get(id)` or `atlas.entries(type).get(slug)`.
+`image` / `relation` / `content_type_reference` field values are raw string IDs/slugs.
+Resolve them explicitly — and in parallel when rendering lists:
+
+```ts
+const article = await atlas.entries("article").get(slug);
+const [cover, author] = await Promise.all([
+  atlas.media.get(article.data.cover_image),        // image field → media ID
+  atlas.entries("author").get(article.data.author), // relation field → entry slug
+]);
+```
+
+## Limits to remember
+
+- Delivery keys see **published content only**; draft preview is not yet supported by
+  the SDK (preview-token endpoint pending).
+- No `search` or `schema` namespace on the client — schema introspection belongs to the
+  CLI (`cli-typegen.md`); anything else goes through `raw.get`.
+- API keys are rate limited; a 429 here is **not** retried automatically (only the
+  management client retries) — back off exponentially and retry yourself.

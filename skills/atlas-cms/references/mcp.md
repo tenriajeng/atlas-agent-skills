@@ -1,63 +1,98 @@
 # Atlas MCP tools
 
-The plugin bundles the `@latellu/atlas-mcp` server (stdio). Read tools need
-`ATLAS_LIVE_API_KEY`; write tools need `ATLAS_MGMT_API_KEY`. With only one key set, the
-other half of the tools fails client-side naming the missing variable. If neither is set
-the server exits at startup. `ATLAS_API_URL` overrides the base URL for self-hosted.
+The `@latellu/atlas-mcp` server (stdio) exposes Atlas content operations as agent tools.
+
+**Environment** — read tools need `ATLAS_LIVE_API_KEY`, write tools need
+`ATLAS_MGMT_API_KEY`; with only one set, the other half of the tools fails client-side
+naming the missing variable, and with neither set the server exits at startup.
+`ATLAS_API_URL` overrides the base URL (self-hosted). `MCP_ALLOWED_UPLOAD_PATHS`
+(comma-separated absolute dirs) restricts where `upload_media` may read files from.
+
+Tool results are the API's `data` payload as pretty-printed JSON text; failures come
+back as `Error: Atlas API error: <status> - <message>` tool results (not protocol
+errors).
 
 ## Tool catalog
 
-**Schema & discovery** (live key)
-- `get_workspace_schema` — workspace meta (slug, locales, default locale) + all content types.
-- `list_content_types` / `get_content_type(content_type)` — convenience views over the schema.
+### Schema & discovery — live key
 
-**Entries** (read: live key; write: mgmt key)
-- `list_entries(content_type, page?, limit?, status?)`
-- `get_entry(content_type, slug)`
-- `create_entry(content_type, data, slug?)` — creates a **draft**; slug auto-generated if omitted.
-- `update_entry(content_type, slug, data)`
-- `publish_entry` / `unpublish_entry` / `archive_entry` / `duplicate_entry` / `delete_entry` — all `(content_type, slug)`.
+| Tool | Params | Returns |
+|---|---|---|
+| `get_workspace_schema` | — | `{ workspace: { slug, name, locales, default_locale }, content_types: [...] }` |
+| `list_content_types` | — | `content_types` array (client-side view of the schema) |
+| `get_content_type` | `content_type` | one content type with its full field list; error text if the slug doesn't exist |
 
-**Pages** (read: live; write: mgmt)
-- `list_pages(page?, limit?)` / `get_page(slug)`
-- `create_page(title, slug?, blocks?, seo?)` — creates a draft. `seo` accepts `title`/`description` only.
-- `update_page(slug, title?, blocks?, seo?)` / `publish_page(slug)` / `delete_page(slug)`
+### Entries — read: live key · write: mgmt key
 
-**Media**
-- `get_media(id)` (live key)
-- `upload_media(file_path, folder?, alt_text?)` (mgmt key) — reads a local file and uploads it.
+| Tool | Params | Notes |
+|---|---|---|
+| `list_entries` | `content_type`, `page?`=1, `limit?`=20, `status?` | `status` is free text and **cannot** reveal drafts to a live key |
+| `get_entry` | `content_type`, `slug` | resolves by `slug` alone — `content_type` is accepted but not sent |
+| `create_entry` | `content_type`, `data`, `slug?` | creates a **draft**; slug auto-generated when omitted |
+| `update_entry` | `content_type`, `slug`, `data` | **full replace** of `data`, not a patch |
+| `publish_entry` / `unpublish_entry` / `archive_entry` | `content_type`, `slug` | need the `content:publish` scope |
+| `duplicate_entry` | `content_type`, `slug` | copies to a new draft |
+| `delete_entry` | `content_type`, `slug` | returns plain text, not JSON |
 
-## Recommended workflow for writes
+### Pages — read: live key · write: mgmt key
 
-1. Call `get_content_type` (or `get_workspace_schema`) first to learn the exact field
-   names and types. `data` is an unvalidated map — the backend rejects bad shapes with a
-   400, and per-field validation detail is **not** surfaced through MCP (you only see
-   `Atlas API error: 400 - validation failed`).
-2. `create_entry` / `update_entry` with a `data` object matching the schema.
-3. `publish_entry` when ready (requires the `content:publish` scope on the key).
+| Tool | Params | Notes |
+|---|---|---|
+| `list_pages` | `page?`=1, `limit?`=20 | summaries, no blocks |
+| `get_page` | `slug` | block tree — each block's `data` is a **JSON string**, parse it |
+| `create_page` | `title`, `slug?`, `blocks?`, `seo?` | draft; `seo` accepts only `title`/`description` here |
+| `update_page` | `slug`, `title?`, `blocks?`, `seo?` | |
+| `publish_page` | `slug` | the ONLY page lifecycle tool — see gaps below |
+| `delete_page` | `slug` | plain-text result |
+
+### Media
+
+| Tool | Params | Notes |
+|---|---|---|
+| `get_media` | `id` | live key |
+| `upload_media` | `file_path` (absolute), `folder?`="/", `alt_text?` | mgmt key; reads the local file, multipart upload |
+
+## Recommended write workflow
+
+1. **Schema first.** Call `get_content_type` (or `get_workspace_schema`) before any
+   `create_entry`/`update_entry`. The `data` argument is an unvalidated map; the backend
+   rejects wrong shapes with 400, and **per-field validation detail is lost through
+   MCP** — you only see `Atlas API error: 400 - validation failed`. Knowing the exact
+   field names/types up front is the difference between one call and five.
+2. **Read-modify-write for updates.** `update_entry` replaces `data` wholesale:
+   `get_entry` → merge your change into the full object → `update_entry` with everything.
+3. **Create → verify → publish.** `create_entry` makes a draft; `publish_entry` needs
+   the `content:publish` scope (403 without it, with a clear message).
+4. **Before `upload_media`**: check the file is ≤ 10 MB and has a known extension.
+   Validation is entirely server-side; MIME is inferred from the extension and unknown
+   extensions upload as `application/octet-stream`, which the backend always rejects
+   (so `.svg`, `.heic` fail). Allowed: `image/*`, `video/*`, `application/pdf` (i.e.
+   `.jpg .jpeg .png .gif .webp .mp4 .webm .mov .pdf`).
+
+## Capability gaps — route elsewhere instead of retrying
+
+These exist in the backend/SDK but have **no MCP tool**; say so and point to the
+dashboard or the management SDK (`sdk-management.md`) rather than improvising:
+
+- Page lifecycle beyond publish: **no `unpublish_page`, `archive_page`,
+  `duplicate_page`**.
+- **No** bulk operations, entry/page **scheduling**, or block **reorder** tools.
+- **No `delete_media` / `update_media`** (alt-text edits) — media is upload-and-read
+  only through MCP.
+- Pagination is offset-only (`page`/`limit`); there is no cursor option, so listings
+  past page 1000 (`PAGE_TOO_DEEP`) are unreachable via MCP.
 
 ## Gotchas
 
-- **`update_entry` is a full replace** of `data`, not a patch. Read the entry first,
-  merge your change, then send the complete object (read-modify-write).
-- **Page lifecycle is asymmetric**: there is no `unpublish_page`, `archive_page`, or
-  `duplicate_page` tool. There are also no bulk, schedule, or block-reorder tools, and no
-  `delete_media`/`update_media`. For those, use the dashboard or the SDK management
-  client (see `sdk-management.md`).
-- **`get_page` returns each block's `data` as a JSON-encoded string**, not an object.
-  Parse it before reading fields — otherwise blocks look empty.
-- **`get_entry` resolves by slug alone**; its `content_type` argument is accepted but not
-  sent to the backend. Don't rely on it to disambiguate slugs shared across types.
-- **Drafts are invisible to live keys.** `list_entries(status="draft")` with a production
-  key returns nothing — that is key scoping, not an empty workspace.
-- **Uploads are validated server-side only**: max 10 MB; MIME must be `image/*`,
-  `video/*`, or `application/pdf`. MIME is inferred from the file extension; unknown
-  extensions become `application/octet-stream` and are always rejected (e.g. `.svg`,
-  `.heic`). Check size and extension before calling `upload_media`. If
-  `MCP_ALLOWED_UPLOAD_PATHS` is set, `file_path` must live under one of those directories.
-- **No client-side retry on 429.** On `Atlas API error: 429 - ...`, back off
-  (exponentially) and retry yourself.
-- **`delete_entry` / `delete_page` return plain text** ("Entry 'x' deleted successfully"),
-  unlike every other tool, which returns JSON.
-- Every write automatically sends a fresh `Idempotency-Key` header per call; identical
-  retries you issue as *new tool calls* are new operations, not deduplicated.
+- **Drafts are invisible to live keys** — `list_entries(status="draft")` returning
+  empty means key scoping, not an empty workspace.
+- **`get_page` block `data` needs `JSON.parse`** per block, or blocks look empty.
+- **`get_entry` ignores `content_type`** — slugs shared across types resolve to
+  whatever the backend finds by slug.
+- **No client-side 429 retry** — on `Atlas API error: 429`, back off exponentially and
+  retry the tool call yourself.
+- Every write sends a fresh auto-generated `Idempotency-Key` per call, so re-issuing a
+  failed create as a *new tool call* is a new operation — check whether the first call
+  actually landed (e.g. `get_entry`) before retrying creates.
+- One MCP server = one workspace (the key's). Multi-workspace work needs one server
+  registration per workspace.
