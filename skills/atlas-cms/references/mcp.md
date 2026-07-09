@@ -1,6 +1,9 @@
 # Atlas MCP tools
 
 The `@latellu/atlas-mcp` server (stdio) exposes Atlas content operations as agent tools.
+This file describes `@latellu/atlas-mcp` **≥ 1.1.0** (the bundled `.mcp.json` uses
+`npx -y`, so it always runs the latest). Older servers lack `translations`,
+`seo_translations`, per-field error detail, and the schema `id`/`is_block` fields.
 
 **Environment** — read tools need `ATLAS_LIVE_API_KEY`, write tools need
 `ATLAS_MGMT_API_KEY`; with only one set, the other half of the tools fails client-side
@@ -18,7 +21,7 @@ errors).
 
 | Tool | Params | Returns |
 |---|---|---|
-| `get_workspace_schema` | — | `{ workspace: { slug, name, locales, default_locale }, content_types: [...] }` |
+| `get_workspace_schema` | — | `{ workspace: { slug, name, locales, default_locale }, content_types: [...] }` — each content type carries `id` and `is_block`; types with `is_block: true` are the valid `block_type_id` values for page blocks |
 | `list_content_types` | — | `content_types` array (client-side view of the schema) |
 | `get_content_type` | `content_type` | one content type with its full field list; error text if the slug doesn't exist |
 
@@ -28,8 +31,8 @@ errors).
 |---|---|---|
 | `list_entries` | `content_type`, `page?`=1, `limit?`=20, `status?` | `status` is free text and **cannot** reveal drafts to a live key |
 | `get_entry` | `content_type`, `slug` | resolves by `slug` alone — `content_type` is accepted but not sent |
-| `create_entry` | `content_type`, `data`, `slug?` | creates a **draft**; slug auto-generated when omitted |
-| `update_entry` | `content_type`, `slug`, `data` | **full replace** of `data`, not a patch |
+| `create_entry` | `content_type`, `data`, `slug?`, `translations?` | creates a **draft**; slug auto-generated when omitted; `translations` = `{locale: {data: {...}}}` (required+localizable fields go HERE) |
+| `update_entry` | `content_type`, `slug`, `data`, `translations?` | **full replace** of `data` (and per-locale `translations`), not a patch |
 | `publish_entry` / `unpublish_entry` / `archive_entry` | `content_type`, `slug` | need the `content:publish` scope |
 | `duplicate_entry` | `content_type`, `slug` | copies to a new draft |
 | `delete_entry` | `content_type`, `slug` | returns plain text, not JSON |
@@ -40,9 +43,9 @@ errors).
 |---|---|---|
 | `list_pages` | `page?`=1, `limit?`=20 | summaries, no blocks |
 | `get_page` | `slug` | block tree — each block's `data` is a **JSON string**, parse it |
-| `create_page` | `title`, `slug?`, `blocks?`, `seo?` | draft; `seo` accepts only `title`/`description` here |
-| `update_page` | `slug`, `title?`, `blocks?`, `seo?` | |
-| `publish_page` | `slug` | the ONLY page lifecycle tool — see gaps below |
+| `create_page` | `slug`, `title?`, `blocks?`, `seo?`, `seo_translations?` | draft; `title` is an alias for `seo.title`; `seo` accepts `title`/`description`/`keywords`/`og_image`/`canonical`; blocks = `[{block_type_id, parent_id?, position, data, translations?}]` |
+| `update_page` | `slug`, `title?`, `blocks?`, `seo?`, `seo_translations?` | passing `blocks` replaces the whole list; `seo` replaces wholesale (title alone drops other seo fields) |
+| `publish_page` | `slug` | the ONLY page lifecycle tool — see gaps below; fails on blockless pages |
 | `delete_page` | `slug` | plain-text result |
 
 ### Media
@@ -51,14 +54,16 @@ errors).
 |---|---|---|
 | `get_media` | `id` | live key |
 | `upload_media` | `file_path` (absolute), `folder?`="/", `alt_text?` | mgmt key; reads the local file, multipart upload |
+| `delete_media` | `id` | mgmt key; plain-text result |
 
 ## Recommended write workflow
 
 1. **Schema first.** Call `get_content_type` (or `get_workspace_schema`) before any
    `create_entry`/`update_entry`. The `data` argument is an unvalidated map; the backend
-   rejects wrong shapes with 400, and **per-field validation detail is lost through
-   MCP** — you only see `Atlas API error: 400 - validation failed`. Knowing the exact
-   field names/types up front is the difference between one call and five.
+   rejects wrong shapes with 400. Error results include per-field detail
+   (`title: title is required`) and a `traceId` — read them instead of guessing.
+   Knowing the exact field names/types up front is still the difference between one
+   call and five.
 2. **Read-modify-write for updates.** `update_entry` replaces `data` wholesale:
    `get_entry` → merge your change into the full object → `update_entry` with everything.
 3. **Create → verify → publish.** `create_entry` makes a draft; `publish_entry` needs
@@ -74,25 +79,15 @@ errors).
 These exist in the backend/SDK but have **no MCP tool**; say so and point to the
 dashboard or the management SDK (`sdk-management.md`) rather than improvising:
 
-- **Translations cannot be written.** `create_entry`/`update_entry` forward only
-  `slug`/`data` — a `translations` key is dropped. "Translate this entry" is an SDK or
-  dashboard job (see `authoring.md`), and note that a required+localizable field can
-  make MCP creates fail outright (its value must be in `translations`).
 - Page lifecycle beyond publish: **no `unpublish_page`, `archive_page`,
   `duplicate_page`**.
 - **No** bulk operations, entry/page **scheduling**, or block **reorder** tools.
-- **No `delete_media` / `update_media`** (alt-text edits) — media is upload-and-read
-  only through MCP.
+- **No `update_media`** (alt-text edits) — media is upload/read/delete through MCP.
 - Pagination is offset-only (`page`/`limit`); there is no cursor option, so listings
   past page 1000 (`PAGE_TOO_DEEP`) are unreachable via MCP.
-- Composing page **blocks** needs `block_type_id` UUIDs that no read surface exposes
-  (dashboard-only knowledge) — prefer entries for agent-authored content. Also:
-  `create_page`'s `title` argument is ignored by the backend (the title is `seo.title`),
-  and its `seo` accepts only `title`/`description`.
 
 Before composing any `data` payload, read `authoring.md` — it defines the exact value
-format per field type (richtext = Tiptap HTML, relation/image = UUIDs, etc.), which
-matters double here because MCP swallows per-field validation errors.
+format per field type (richtext = Tiptap HTML, relation/image = UUIDs, etc.).
 
 ## Gotchas
 

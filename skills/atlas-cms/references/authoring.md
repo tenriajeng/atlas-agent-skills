@@ -71,9 +71,9 @@ Rules that will bite you if unknown:
   });
   ```
 
-- **Via MCP: not possible.** The `create_entry`/`update_entry` tools forward only
-  `slug` and `data` — a `translations` key is dropped. Translating content needs the
-  SDK or the dashboard; say so instead of trying.
+- **Via MCP (≥ 1.1.0)**: pass the same `translations` map as a tool argument on
+  `create_entry`/`update_entry`. Older MCP servers silently drop it — if a
+  translation write appears to succeed but nothing changes, check the server version.
 
 ## Writing pages and blocks
 
@@ -104,19 +104,17 @@ The real write shape (`POST/PUT /pages`) differs from what the reading API shows
 
 - `update` with `blocks` replaces the block list; reordering alone has a dedicated
   endpoint (`blocksReorder(slug, ids)` in the SDK).
-- **`block_type_id` is effectively dashboard-only knowledge.** The public read API
-  returns each block's type *name* and its instance id — not its `block_type_id` — and
-  the management plane has no read endpoints at all. To compose new blocks
-  programmatically you must be given the block-type UUIDs (from the dashboard). If you
-  don't have them, structure the content as **entries** instead (fully writable blind)
-  and keep pages for dashboard-managed layout.
-- MCP `create_page`/`update_page` extra caveats: the `title` argument is ignored by the
-  backend (set `seo.title`), `seo` there accepts only `title`/`description`, and block
-  `translations`/`seo_translations` aren't expressible.
+- **Finding `block_type_id`: read the workspace schema.** Block types are content
+  types with `is_block: true`; `GET /api/v1/public/schema` (or the MCP
+  `get_workspace_schema` tool) returns each content type's `id`, `is_block`, and field
+  list. Use the `id` of an `is_block: true` type as `block_type_id`, and compose the
+  block's `data` against its fields exactly like an entry. (Older backends omit
+  `id`/`is_block` from the schema — there, block-type UUIDs are dashboard-only.)
+- MCP `create_page`/`update_page` caveats (≥ 1.1.0): `title` is an alias mapped to
+  `seo.title` (on update, `seo` is replaced wholesale — title alone drops the other seo
+  fields), and `seo_translations`/per-block `translations` are regular arguments.
 - **A page without blocks cannot be published** — publish returns an error requiring at
-  least one block. Combined with `block_type_id` being undiscoverable, an API-only
-  workflow can create and edit pages but **never publish a new one**; publishing needs
-  someone to add a block in the dashboard first (or block-type UUIDs supplied to you).
+  least one block. Compose at least one block (see above) before `publish_page`.
 - **The write plane has no reads**, and write responses don't echo `seo_translations` —
   you cannot fully verify a translation write without a live key for the same workspace.
   Trick: `PUT /pages/:slug` with body `{}` is a safe no-op that returns the page's
@@ -128,6 +126,7 @@ The real write shape (`POST/PUT /pages`) differs from what the reading API shows
 2. Uploads first → collect media UUIDs.
 3. Compose `data` per the table above; localizable required fields go in `translations`.
 4. Create (draft) → read back → verify → publish.
-5. On `VALIDATION_ERROR` via MCP (no field detail): re-check step 1-3 against this file
-   before retrying — the usual culprits are slug-instead-of-UUID in relation/image,
-   markdown in richtext, and required-localizable fields sitting in `data`.
+5. On `VALIDATION_ERROR`: the error text carries per-field detail (MCP ≥ 1.1.0 and the
+   SDK both surface it) — fix the named field. The usual culprits are
+   slug-instead-of-UUID in relation/image, markdown in richtext, and
+   required-localizable fields sitting in `data`.

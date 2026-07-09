@@ -113,8 +113,8 @@ try {
   if (e instanceof AtlasError) {
     e.status;  // 400
     e.code;    // "VALIDATION_ERROR"
-    e.errors;  // [{ field: "title", message: "must be a string" }, ...]  ← per-field detail,
-  }            //    management client only (MCP loses this) — surface it to users
+    e.errors;  // [{ field: "title", message: "must be a string" }, ...]  ← per-field detail
+  }            //    (structured here; MCP ≥ 1.1.0 appends it to the error text) — surface it to users
 }
 ```
 
