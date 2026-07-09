@@ -69,7 +69,7 @@ await client.pages.create({ slug: "landing", seo: { title: "Landing" }, blocks: 
 await client.pages.update("landing", { seo: { title: "Landing v2" } });
 await client.pages.publish("landing");   // fails unless the page has ≥1 block — see authoring.md
 await client.pages.unpublish("landing");   // pages have the FULL lifecycle here
-await client.pages.archive("landing");     //   (unlike the MCP tools)
+await client.pages.archive("landing");     // (MCP also has parity since v1.2.0)
 await client.pages.schedule("landing", "2026-08-01T09:00:00Z");
 await client.pages.delete("landing");
 await client.pages.blocksReorder("landing", ["block-id-2", "block-id-1", "block-id-3"]);

@@ -1,9 +1,9 @@
 # Atlas MCP tools
 
 The `@latellu/atlas-mcp` server (stdio) exposes Atlas content operations as agent tools.
-This file describes `@latellu/atlas-mcp` **≥ 1.1.0** (the bundled `.mcp.json` uses
+This file describes `@latellu/atlas-mcp` **≥ 1.2.0** (the bundled `.mcp.json` uses
 `npx -y`, so it always runs the latest). Older servers lack `translations`,
-`seo_translations`, per-field error detail, and the schema `id`/`is_block` fields.
+`seo_translations`, per-field error detail, the schema `id`/`is_block` fields, page/entry lifecycle tools (unpublish/archive/duplicate/schedule), bulk operations, reorder tools, media alt-text editing, list meta+cursor pagination, automatic 429 retry, and pre-parsed block data in get_page.
 
 **Environment** — read tools need `ATLAS_LIVE_API_KEY`, write tools need
 `ATLAS_MGMT_API_KEY`; with only one set, the other half of the tools fails client-side
@@ -29,32 +29,42 @@ errors).
 
 | Tool | Params | Notes |
 |---|---|---|
-| `list_entries` | `content_type`, `page?`=1, `limit?`=20, `status?` | `status` is free text and **cannot** reveal drafts to a live key |
-| `get_entry` | `content_type`, `slug` | resolves by `slug` alone — `content_type` is accepted but not sent |
+| `list_entries` | `content_type`, `page?`=1, `limit?`=20, `status?`, `cursor?` | `status` is enum (draft \| published \| archived \| scheduled); live key **cannot** reveal drafts. Returns `{ data, meta }` where `meta` has `total_data`, `total_pages` (offset mode) or `next_cursor` (cursor mode). Use `cursor: meta.next_cursor` to page past the 1000-page limit. |
+| `get_entry` | `content_type`, `slug` | resolves by `slug` alone — `content_type` is accepted but errors clearly if the slug belongs to a different content type |
 | `create_entry` | `content_type`, `data`, `slug?`, `translations?` | creates a **draft**; slug auto-generated when omitted; `translations` = `{locale: {data: {...}}}` (required+localizable fields go HERE) |
 | `update_entry` | `content_type`, `slug`, `data`, `translations?` | **full replace** of `data` (and per-locale `translations`), not a patch |
 | `publish_entry` / `unpublish_entry` / `archive_entry` | `content_type`, `slug` | need the `content:publish` scope |
 | `duplicate_entry` | `content_type`, `slug` | copies to a new draft |
-| `delete_entry` | `content_type`, `slug` | returns plain text, not JSON |
+| `schedule_entry` | `content_type`, `slug`, `publish_at` | schedules publish for a future time (ISO 8601 UTC); needs `content:publish` scope |
+| `bulk_entries` | `content_type`, `operations` | batch publish/archive/schedule/delete by entry UUIDs; each op in array: `{ op, id, publish_at? }` |
+| `bulk_delete_entries` | `content_type`, `ids` | batch delete by entry UUIDs |
+| `reorder_entries` | `content_type`, `ids` | reorder entries; pass the complete ordered list of entry UUIDs |
+| `delete_entry` | `content_type`, `slug` | returns JSON `{ deleted: true, ... }` |
 
 ### Pages — read: live key · write: mgmt key
 
 | Tool | Params | Notes |
 |---|---|---|
-| `list_pages` | `page?`=1, `limit?`=20 | summaries, no blocks |
-| `get_page` | `slug` | block tree — each block's `data` is a **JSON string**, parse it |
+| `list_pages` | `page?`=1, `limit?`=20, `cursor?` | summaries, no blocks. Returns `{ data, meta }` with cursor pagination option (same as `list_entries`). |
+| `get_page` | `slug` | block tree — each block's `data` is already parsed to an object (no JSON.parse needed); nested children and translations included |
 | `create_page` | `slug`, `title?`, `blocks?`, `seo?`, `seo_translations?` | draft; `title` is an alias for `seo.title`; `seo` accepts `title`/`description`/`keywords`/`og_image`/`canonical`; blocks = `[{block_type_id, parent_id?, position, data, translations?}]` |
 | `update_page` | `slug`, `title?`, `blocks?`, `seo?`, `seo_translations?` | passing `blocks` replaces the whole list; `seo` replaces wholesale (title alone drops other seo fields) |
-| `publish_page` | `slug` | the ONLY page lifecycle tool — see gaps below; fails on blockless pages |
-| `delete_page` | `slug` | plain-text result |
+| `publish_page` | `slug` | publish a page; fails on blockless pages |
+| `unpublish_page` | `slug` | unpublish a page; needs `content:publish` scope |
+| `archive_page` | `slug` | archive a page; needs `content:publish` scope |
+| `duplicate_page` | `slug` | copy to a new draft |
+| `schedule_page` | `slug`, `publish_at` | schedule publish for a future time (ISO 8601 UTC); needs `content:publish` scope |
+| `reorder_page_blocks` | `slug`, `block_ids` | reorder blocks; pass the complete ordered list of block IDs |
+| `delete_page` | `slug` | returns JSON `{ deleted: true, ... }` |
 
 ### Media
 
 | Tool | Params | Notes |
 |---|---|---|
 | `get_media` | `id` | live key |
-| `upload_media` | `file_path` (absolute), `folder?`="/", `alt_text?` | mgmt key; reads the local file, multipart upload |
-| `delete_media` | `id` | mgmt key; plain-text result |
+| `upload_media` | `file_path` (absolute), `folder?`="/", `alt_text?` | mgmt key; reads the local file, multipart upload. Pre-validates client-side: ≤10 MB, extension allowlist (.jpg .jpeg .png .gif .webp .mp4 .webm .mov .pdf). |
+| `update_media` | `id`, `alt_text?`, `folder?` | mgmt key; edit metadata (alt text and/or folder). |
+| `delete_media` | `id` | mgmt key; returns JSON `{ deleted: true, ... }` |
 
 ## Recommended write workflow
 
@@ -68,23 +78,20 @@ errors).
    `get_entry` → merge your change into the full object → `update_entry` with everything.
 3. **Create → verify → publish.** `create_entry` makes a draft; `publish_entry` needs
    the `content:publish` scope (403 without it, with a clear message).
-4. **Before `upload_media`**: check the file is ≤ 10 MB and has a known extension.
-   Validation is entirely server-side; MIME is inferred from the extension and unknown
-   extensions upload as `application/octet-stream`, which the backend always rejects
-   (so `.svg`, `.heic` fail). Allowed: `image/*`, `video/*`, `application/pdf` (i.e.
-   `.jpg .jpeg .png .gif .webp .mp4 .webm .mov .pdf`).
+4. **Before `upload_media`**: the tool pre-validates client-side (≤ 10 MB, extension
+   allowlist), so failures are caught before upload. Allowed extensions:
+   `.jpg .jpeg .png .gif .webp .mp4 .webm .mov .pdf`.
 
 ## Capability gaps — route elsewhere instead of retrying
 
-These exist in the backend/SDK but have **no MCP tool**; say so and point to the
-dashboard or the management SDK (`sdk-management.md`) rather than improvising:
+The MCP manage plane is now fully covered. These gaps remain:
 
-- Page lifecycle beyond publish: **no `unpublish_page`, `archive_page`,
-  `duplicate_page`**.
-- **No** bulk operations, entry/page **scheduling**, or block **reorder** tools.
-- **No `update_media`** (alt-text edits) — media is upload/read/delete through MCP.
-- Pagination is offset-only (`page`/`limit`); there is no cursor option, so listings
-  past page 1000 (`PAGE_TOO_DEEP`) are unreachable via MCP.
+- **No automatic merge on `update_entry`** — the tool replaces `data` wholesale, so you
+  must read-modify-write yourself: `get_entry` → merge your changes → `update_entry`.
+  The management SDK offers an `update` overload that accepts a patch, but MCP does not.
+- **Schema is dashboard-only.** Creating content types, fields, or block types is not
+  exposed via MCP, SDK, or API. "Create a content type" = ask the user to do it in the
+  dashboard, then continue.
 
 Before composing any `data` payload, read `authoring.md` — it defines the exact value
 format per field type (richtext = Tiptap HTML, relation/image = UUIDs, etc.).
@@ -93,11 +100,8 @@ format per field type (richtext = Tiptap HTML, relation/image = UUIDs, etc.).
 
 - **Drafts are invisible to live keys** — `list_entries(status="draft")` returning
   empty means key scoping, not an empty workspace.
-- **`get_page` block `data` needs `JSON.parse`** per block, or blocks look empty.
-- **`get_entry` ignores `content_type`** — slugs shared across types resolve to
-  whatever the backend finds by slug.
-- **No client-side 429 retry** — on `Atlas API error: 429`, back off exponentially and
-  retry the tool call yourself.
+- **`get_entry` errors if the slug belongs to a different content type** — content types
+  used to share slug namespaces, now you get a clear error instead of silent mismatch.
 - Every write sends a fresh auto-generated `Idempotency-Key` per call, so re-issuing a
   failed create as a *new tool call* is a new operation — check whether the first call
   actually landed (e.g. `get_entry`) before retrying creates.

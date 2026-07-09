@@ -82,8 +82,7 @@ types, then build the page"), route each sub-task to its own single reference.
 
 Choosing between MCP and the management SDK for writes: MCP is for operating content
 interactively in an agent session (one-off edits, content entry, audits); the SDK is for
-code that outlives the session (migrations, sync jobs, backends) and for anything MCP
-lacks (bulk, scheduling, page unpublish/archive, block reorder, media alt-text edits).
+code that outlives the session (migrations, sync jobs, backends) and for structured per-field error objects.
 
 ## Hard capability boundaries (don't go looking for these)
 
