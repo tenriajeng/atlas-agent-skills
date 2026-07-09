@@ -1,0 +1,24 @@
+{
+  "name": "@latellu/atlas-agent-skills",
+  "version": "0.1.0",
+  "description": "Agent skill + MCP configuration for Atlas CMS. Works as a Claude Code plugin and as plain markdown guidance for any AI coding agent (Cursor, Codex, opencode, Gemini CLI, ...).",
+  "license": "MIT",
+  "author": "Latellu (https://github.com/tenriajeng)",
+  "homepage": "https://docs.atlas.latellu.com/docs/claude-code",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tenriajeng/atlas-agent-skills.git"
+  },
+  "keywords": ["atlas", "cms", "headless-cms", "mcp", "agent", "skill", "claude-code"],
+  "files": [
+    ".claude-plugin",
+    ".mcp.json",
+    "skills",
+    "adapters",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

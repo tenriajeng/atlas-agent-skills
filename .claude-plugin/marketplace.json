@@ -1,0 +1,18 @@
+{
+  "name": "latellu",
+  "description": "Official Latellu plugins for Claude Code, including the Atlas CMS plugin (MCP server + agent skill).",
+  "owner": {
+    "name": "Latellu",
+    "url": "https://github.com/tenriajeng"
+  },
+  "plugins": [
+    {
+      "name": "atlas",
+      "source": {
+        "source": "npm",
+        "package": "@latellu/atlas-agent-skills"
+      },
+      "description": "Atlas CMS for Claude Code: the atlas-cms skill (SDK, CLI and MCP usage guidance) plus the bundled Atlas MCP server for reading and writing content from AI agents."
+    }
+  ]
+}

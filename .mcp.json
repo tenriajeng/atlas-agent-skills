@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "atlas": {
+      "command": "npx",
+      "args": ["-y", "@latellu/atlas-mcp"],
+      "env": {
+        "ATLAS_LIVE_API_KEY": "${ATLAS_LIVE_API_KEY}",
+        "ATLAS_MGMT_API_KEY": "${ATLAS_MGMT_API_KEY}",
+        "ATLAS_API_URL": "${ATLAS_API_URL:-https://api.atlas.latellu.com}",
+        "MCP_ALLOWED_UPLOAD_PATHS": "${MCP_ALLOWED_UPLOAD_PATHS:-}"
+      }
+    }
+  }
+}
