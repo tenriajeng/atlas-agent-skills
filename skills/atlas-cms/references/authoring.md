@@ -113,6 +113,14 @@ The real write shape (`POST/PUT /pages`) differs from what the reading API shows
 - MCP `create_page`/`update_page` extra caveats: the `title` argument is ignored by the
   backend (set `seo.title`), `seo` there accepts only `title`/`description`, and block
   `translations`/`seo_translations` aren't expressible.
+- **A page without blocks cannot be published** — publish returns an error requiring at
+  least one block. Combined with `block_type_id` being undiscoverable, an API-only
+  workflow can create and edit pages but **never publish a new one**; publishing needs
+  someone to add a block in the dashboard first (or block-type UUIDs supplied to you).
+- **The write plane has no reads**, and write responses don't echo `seo_translations` —
+  you cannot fully verify a translation write without a live key for the same workspace.
+  Trick: `PUT /pages/:slug` with body `{}` is a safe no-op that returns the page's
+  current base state (status + seo) — the only "read" available on the management plane.
 
 ## Practical write checklist
 

@@ -67,7 +67,7 @@ All idOrSlug parameters accept either the entry ID or its slug.
 // (seo_translations, block translations, nesting) and the block_type_id caveat.
 await client.pages.create({ slug: "landing", seo: { title: "Landing" }, blocks: [...] });
 await client.pages.update("landing", { seo: { title: "Landing v2" } });
-await client.pages.publish("landing");
+await client.pages.publish("landing");   // fails unless the page has ≥1 block — see authoring.md
 await client.pages.unpublish("landing");   // pages have the FULL lifecycle here
 await client.pages.archive("landing");     //   (unlike the MCP tools)
 await client.pages.schedule("landing", "2026-08-01T09:00:00Z");

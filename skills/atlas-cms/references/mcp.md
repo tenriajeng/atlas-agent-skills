@@ -108,3 +108,7 @@ matters double here because MCP swallows per-field validation errors.
   actually landed (e.g. `get_entry`) before retrying creates.
 - One MCP server = one workspace (the key's). Multi-workspace work needs one server
   registration per workspace.
+- **The server never checks that the live and mgmt keys belong to the same workspace.**
+  A mismatched pair is maximally confusing: schema and reads come from workspace A while
+  every write 404s ("content type not found") against workspace B. If reads succeed but
+  writes 404 on types you just listed, suspect mismatched keys before anything else.
