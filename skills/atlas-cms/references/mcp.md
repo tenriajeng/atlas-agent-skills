@@ -74,6 +74,10 @@ errors).
 These exist in the backend/SDK but have **no MCP tool**; say so and point to the
 dashboard or the management SDK (`sdk-management.md`) rather than improvising:
 
+- **Translations cannot be written.** `create_entry`/`update_entry` forward only
+  `slug`/`data` — a `translations` key is dropped. "Translate this entry" is an SDK or
+  dashboard job (see `authoring.md`), and note that a required+localizable field can
+  make MCP creates fail outright (its value must be in `translations`).
 - Page lifecycle beyond publish: **no `unpublish_page`, `archive_page`,
   `duplicate_page`**.
 - **No** bulk operations, entry/page **scheduling**, or block **reorder** tools.
@@ -81,6 +85,14 @@ dashboard or the management SDK (`sdk-management.md`) rather than improvising:
   only through MCP.
 - Pagination is offset-only (`page`/`limit`); there is no cursor option, so listings
   past page 1000 (`PAGE_TOO_DEEP`) are unreachable via MCP.
+- Composing page **blocks** needs `block_type_id` UUIDs that no read surface exposes
+  (dashboard-only knowledge) — prefer entries for agent-authored content. Also:
+  `create_page`'s `title` argument is ignored by the backend (the title is `seo.title`),
+  and its `seo` accepts only `title`/`description`.
+
+Before composing any `data` payload, read `authoring.md` — it defines the exact value
+format per field type (richtext = Tiptap HTML, relation/image = UUIDs, etc.), which
+matters double here because MCP swallows per-field validation errors.
 
 ## Gotchas
 

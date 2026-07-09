@@ -32,9 +32,18 @@ const w = client.entries("news-article");
 await w.create({ slug: "hello", data: { title: "Hello", body: "..." } });
 // CreateEntryInput = { slug, data, ... }  → creates a DRAFT
 // POST /content-types/:type/entries
+// Field value formats (richtext = Tiptap HTML, relation/image = UUIDs, ...):
+//   see authoring.md before composing `data`.
 
 await w.update("hello", { data: { title: "Hello v2", body: "..." } });
 // UpdateEntryInput = { slug?, data?, ... } — send the FULL data object you want stored
+
+// Localized content: pass a `translations` map as an extra key (accepted by the API
+// on both create and update; required+localizable fields MUST live here, not in data):
+await w.update("hello", {
+  data: fullBaseData,
+  translations: { de: { data: { title: "Hallo" } }, ja: { data: { title: "こんにちは" } } },
+});
 
 await w.publish("hello");                            // PATCH .../publish
 await w.unpublish("hello");                          // PATCH .../unpublish
@@ -53,8 +62,11 @@ All idOrSlug parameters accept either the entry ID or its slug.
 ## Pages
 
 ```ts
-await client.pages.create({ slug: "landing", title: "Landing", blocks: [...], seo: {...} });
-await client.pages.update("landing", { title: "Landing v2" });
+// NOTE: pages have NO top-level title — the title lives in seo.title.
+// Block objects need a block_type_id UUID; see authoring.md for the full write shape
+// (seo_translations, block translations, nesting) and the block_type_id caveat.
+await client.pages.create({ slug: "landing", seo: { title: "Landing" }, blocks: [...] });
+await client.pages.update("landing", { seo: { title: "Landing v2" } });
 await client.pages.publish("landing");
 await client.pages.unpublish("landing");   // pages have the FULL lifecycle here
 await client.pages.archive("landing");     //   (unlike the MCP tools)

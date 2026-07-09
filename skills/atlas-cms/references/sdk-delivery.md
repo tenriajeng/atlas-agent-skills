@@ -155,16 +155,25 @@ export function BlockRenderer({ blocks }: { blocks: AtlasBlock[] }) {
 
 ## Resolving reference fields
 
-`image` / `relation` / `content_type_reference` field values are raw string IDs/slugs.
-Resolve them explicitly — and in parallel when rendering lists:
+`image` / `relation` / `content_type_reference` values are raw strings, never resolved
+objects. Content written through the API holds **UUIDs** (that's what the backend
+validates); imported/seeded datasets may hold URLs instead — branch on the shape:
 
 ```ts
 const article = await atlas.entries("article").get(slug);
-const [cover, author] = await Promise.all([
-  atlas.media.get(article.data.cover_image),        // image field → media ID
-  atlas.entries("author").get(article.data.author), // relation field → entry slug
-]);
+
+const cover = article.data.cover_image.startsWith("http")
+  ? article.data.cover_image                       // legacy/imported: direct URL
+  : await atlas.media.get(article.data.cover_image); // API-written: media UUID
+
+// relation fields hold entry UUIDs; the public API fetches entries by SLUG only,
+// so resolve relations by listing the target type and matching on id:
+const authors = await atlas.entries("author").list({ limit: 100 });
+const author = authors.items.find((a) => a.id === article.data.author);
 ```
+
+Also note: list endpoints have **no field-value filters** (only type/locale/page/sort) —
+"entries where category = X" means paging + filtering client-side.
 
 ## Limits to remember
 

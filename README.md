@@ -33,7 +33,7 @@ Then point your agent at the skill (via `AGENTS.md`, Cursor rules, etc.) and reg
 | Path | Purpose |
 | --- | --- |
 | `skills/atlas-cms/SKILL.md` | Router: shared Atlas concepts + decision table (MCP vs SDK vs CLI) |
-| `skills/atlas-cms/references/` | Per-surface guides: MCP tools, SDK delivery, SDK management, CLI typegen |
+| `skills/atlas-cms/references/` | Per-surface guides: MCP tools, SDK delivery, SDK management, CLI typegen, content authoring (field formats, translations, blocks) |
 | `.mcp.json` | Atlas MCP server config (used by the Claude Code plugin) |
 | `.claude-plugin/` | Claude Code plugin + marketplace manifests |
 | `adapters/other-agents.md` | Setup for non-Claude agents |

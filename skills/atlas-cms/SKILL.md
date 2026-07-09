@@ -75,6 +75,7 @@ is `-1` in cursor mode).
 | Wanting typed content interfaces for the SDK | CLI type generator | [references/cli-typegen.md](references/cli-typegen.md) |
 | Writing content from your own code (scripts, migrations, backends) | SDK management client | [references/sdk-management.md](references/sdk-management.md) |
 | Operating content via MCP tools in this session (`list_entries`, `create_entry`, ...) | Atlas MCP server | [references/mcp.md](references/mcp.md) |
+| Composing any `data` payload — field value formats, translations, page blocks | Authoring guide | [references/authoring.md](references/authoring.md) |
 
 Do **not** read references you don't need. If a task spans surfaces (e.g. "generate
 types, then build the page"), route each sub-task to its own single reference.
@@ -82,8 +83,18 @@ types, then build the page"), route each sub-task to its own single reference.
 Choosing between MCP and the management SDK for writes: MCP is for operating content
 interactively in an agent session (one-off edits, content entry, audits); the SDK is for
 code that outlives the session (migrations, sync jobs, backends) and for anything MCP
-lacks (bulk, scheduling, page unpublish/archive, media delete, per-field validation
-errors).
+lacks (bulk, scheduling, page unpublish/archive, media delete, **writing translations**,
+per-field validation errors).
+
+## Hard capability boundaries (don't go looking for these)
+
+- **Schema is dashboard-only.** No API, SDK, CLI, or MCP surface creates content types,
+  fields, or block types. "Create a content type" = ask the user to do it in the
+  dashboard, then continue.
+- **No field-value queries.** The public list endpoints filter by `type`/`locale` only —
+  "all articles where category = X" means paging through and filtering client-side.
+- **The management plane is write-only** (no GET endpoints). Reading always needs a
+  live key; a write-then-verify flow therefore needs both keys.
 
 Deep API detail lives at https://docs.atlas.latellu.com — link there rather than
 duplicating endpoint documentation into this skill.
