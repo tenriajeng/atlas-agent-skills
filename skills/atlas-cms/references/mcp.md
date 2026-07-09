@@ -88,7 +88,8 @@ The MCP manage plane is now fully covered. These gaps remain:
 
 - **No automatic merge on `update_entry`** — the tool replaces `data` wholesale, so you
   must read-modify-write yourself: `get_entry` → merge your changes → `update_entry`.
-  The management SDK offers an `update` overload that accepts a patch, but MCP does not.
+  (The management SDK's `update` is a full replace too — this is API semantics, not an
+  MCP quirk.)
 - **Schema is dashboard-only.** Creating content types, fields, or block types is not
   exposed via MCP, SDK, or API. "Create a content type" = ask the user to do it in the
   dashboard, then continue.
@@ -100,8 +101,9 @@ format per field type (richtext = Tiptap HTML, relation/image = UUIDs, etc.).
 
 - **Drafts are invisible to live keys** — `list_entries(status="draft")` returning
   empty means key scoping, not an empty workspace.
-- **`get_entry` errors if the slug belongs to a different content type** — content types
-  used to share slug namespaces, now you get a clear error instead of silent mismatch.
+- **`get_entry` looks up by slug alone** (slug-global, `content_type` is not sent to the
+  API) — but if the entry found belongs to a different content type than you requested,
+  the tool returns a clear mismatch error instead of the wrong entry.
 - Every write sends a fresh auto-generated `Idempotency-Key` per call, so re-issuing a
   failed create as a *new tool call* is a new operation — check whether the first call
   actually landed (e.g. `get_entry`) before retrying creates.

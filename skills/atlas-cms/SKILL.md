@@ -53,15 +53,16 @@ browser-delivered code. Management usage is server-side only (API routes, script
 
 Every REST response is an envelope: `{ success, message, data?, meta?, code?, errors? }`.
 The SDK and MCP unwrap it, but two payload quirks leak through in places: `entry.data`,
-page `seo`, and block `data` are stored/transported as **JSON strings** (the SDK parses
-them for you; MCP `get_page` does not), and list `meta` uses
+page `seo`, and block `data` are stored/transported as **JSON strings** (the SDK and
+MCP ≥ 1.2.0 parse them for you), and list `meta` uses
 `{ total_data, current_page, page_size, total_pages, next_cursor }`.
 
 Error codes you will actually see: `UNAUTHORIZED` (401 — missing/empty/wrong-class key),
 `FORBIDDEN` (403 — missing scope or RBAC), `NOT_FOUND` (404 — also returned for
 other-workspace resources), `VALIDATION_ERROR` (400 — with field detail),
 `PAGE_TOO_DEEP` (400 — offset pagination past page 1000), and 429 rate limiting
-(back off exponentially; only the SDK management client retries for you).
+(the SDK management client and MCP ≥ 1.2.0 retry automatically; elsewhere back off
+exponentially yourself).
 
 Pagination limits: `limit` max 100, `page` max 1000; past that, switch to cursor
 pagination (`meta.next_cursor`, opaque — never construct cursors yourself; `total_data`
