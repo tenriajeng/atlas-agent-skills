@@ -1,0 +1,95 @@
+{
+  "skill_name": "atlas-cms",
+  "trigger_evals": [
+    {
+      "id": "t01-obvious-fetch",
+      "query": "How do I fetch published blog posts from Atlas CMS and render them in my Next.js app?",
+      "expected_trigger": true,
+      "category": "obvious"
+    },
+    {
+      "id": "t02-obvious-typegen",
+      "query": "Generate TypeScript types for my Atlas workspace schema using the CLI",
+      "expected_trigger": true,
+      "category": "obvious"
+    },
+    {
+      "id": "t03-obvious-mcp-publish",
+      "query": "Use the Atlas MCP tools to publish this draft page for me",
+      "expected_trigger": true,
+      "category": "obvious"
+    },
+    {
+      "id": "t04-obvious-bulk-import",
+      "query": "I need to bulk import 500 articles into Atlas CMS using the management SDK, each with a slug and body field",
+      "expected_trigger": true,
+      "category": "obvious"
+    },
+    {
+      "id": "t05-casual-mgmt-key",
+      "query": "can u help me push some content into atlas cms real quick, i got an atlas_mgmt key ready to go",
+      "expected_trigger": true,
+      "category": "casual/typo"
+    },
+    {
+      "id": "t06-casual-drafts-bug",
+      "query": "yo my atlas_live_ key keeps returning empty for drafts even tho i can see them in the dashboard, wtf is going on",
+      "expected_trigger": true,
+      "category": "casual/typo"
+    },
+    {
+      "id": "t07-casual-typegen-abbrev",
+      "query": "need to gen the ts types from api.atlas.latellu.com schema for our repo pls, whats the cmd again",
+      "expected_trigger": true,
+      "category": "casual/typo"
+    },
+    {
+      "id": "t08-casual-vague-cms-mention",
+      "query": "hey the entries arent showing up on the site after i edited them in the dashboard, its the latellu atlas thing we use for content",
+      "expected_trigger": true,
+      "category": "casual/typo"
+    },
+    {
+      "id": "t09-nearmiss-stripe-key",
+      "query": "How do I set up authentication with an API key for my Stripe payments integration in this Next.js app?",
+      "expected_trigger": false,
+      "category": "near-miss-adjacent-domain",
+      "notes": "shares 'API key' + 'integration' language but is Stripe, not Atlas"
+    },
+    {
+      "id": "t10-nearmiss-contentful",
+      "query": "I need to fetch blog content from Contentful CMS and render it on our marketing site",
+      "expected_trigger": false,
+      "category": "near-miss-adjacent-domain",
+      "notes": "shares 'fetch content from CMS' phrasing but names a different CMS product entirely"
+    },
+    {
+      "id": "t11-nearmiss-prisma-typegen",
+      "query": "Generate TypeScript types from my Prisma schema for the Postgres database",
+      "expected_trigger": false,
+      "category": "near-miss-adjacent-domain",
+      "notes": "shares 'generate TypeScript types from schema' phrasing but is Prisma/DB typegen, unrelated to Atlas CLI"
+    },
+    {
+      "id": "t12-nearmiss-s3-upload",
+      "query": "Upload these product photos to our AWS S3 bucket and get back the public URLs",
+      "expected_trigger": false,
+      "category": "near-miss-adjacent-domain",
+      "notes": "shares 'upload media' concept but is raw S3, not Atlas media"
+    },
+    {
+      "id": "t13-nearmiss-wordpress-publish",
+      "query": "Publish this draft page on our WordPress site once I finish editing it",
+      "expected_trigger": false,
+      "category": "near-miss-adjacent-domain",
+      "notes": "shares 'publish this draft page' phrasing but names a different CMS (WordPress)"
+    },
+    {
+      "id": "t14-nearmiss-cms-research",
+      "query": "We're evaluating headless CMS options for a new project — Sanity, Contentful, or Strapi. Can you compare them for our use case?",
+      "expected_trigger": false,
+      "category": "near-miss-adjacent-domain",
+      "notes": "generic headless-CMS research query that never names Atlas and needs general product comparison, not this skill"
+    }
+  ]
+}

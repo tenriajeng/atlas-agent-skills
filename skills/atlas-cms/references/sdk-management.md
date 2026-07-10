@@ -5,18 +5,66 @@
 browser-bundled code.
 
 ```ts
-import { createManagementClient, AtlasError } from "@latellu/atlas-sdk/management";
+import { createManagementClient, AtlasError, ManagementConfigError } from "@latellu/atlas-sdk/management";
 
-const client = createManagementClient<AtlasContentTypes>({
-  url: process.env.ATLAS_BASE_URL ?? "",    // https://api.atlas.latellu.com
-  token: process.env.ATLAS_MGMT_KEY ?? "",  // MUST start with atlas_mgmt_
+// ✅ CORRECT: Wrap construction in try/catch for config errors
+let client: ManagementClient<AtlasContentTypes> | null = null;
+
+try {
+  client = createManagementClient<AtlasContentTypes>({
+    url: process.env.ATLAS_BASE_URL ?? "https://api.atlas.latellu.com",
+    token: process.env.ATLAS_MGMT_KEY ?? "",  // MUST start with atlas_mgmt_
+  });
+} catch (e) {
+  if (e instanceof ManagementConfigError) {
+    // Configuration error — fail fast at startup
+    console.error("Failed to initialize Atlas:", e.message);
+    process.exit(1);
+  }
+  throw e;
+}
+
+if (!client) {
+  throw new Error("Atlas client not initialized");
+}
+
+// Now client is safely initialized and ready to use
+```
+
+**Common error scenario:**
+If someone accidentally uses an `atlas_live_` delivery key instead of `atlas_mgmt_`, they'll see:
+```
+ManagementConfigError: management client received an atlas_live_ delivery key, which is read-only. 
+You need an atlas_mgmt_ management key for writes. 
+Create one at cms.atlas.latellu.com/dashboard/api-keys
+```
+
+**Validate config without creating the client:**
+```ts
+import { validateManagementConfig } from "@latellu/atlas-sdk/management";
+
+const validation = validateManagementConfig({
+  url: process.env.ATLAS_BASE_URL ?? "",
+  token: process.env.ATLAS_MGMT_KEY ?? "",
 });
+
+if (!validation.valid) {
+  console.error("Invalid Atlas config:", validation.error);
+  if (validation.keyType === 'atlas_live_') {
+    console.error("→ Use an atlas_mgmt_ key (management key) instead");
+  }
+  process.exit(1);
+}
 ```
 
 Construction rules:
-- The token prefix is validated **synchronously**: a non-`atlas_mgmt_` token (e.g. a
-  live key) throws `ManagementConfigError` immediately — wrap
-  `createManagementClient(...)` in try/catch, not just the awaited calls.
+- The token prefix is validated **synchronously at creation time**, not during API calls.
+  A non-`atlas_mgmt_` token (e.g., `atlas_live_` or malformed) throws `ManagementConfigError`
+  immediately with a descriptive message identifying what went wrong.
+- **Critical:** Wrap `createManagementClient(...)` in a try/catch block, **not just the
+  awaited calls**. Config errors are synchronous exceptions; request errors are rejected promises.
+- If you accidentally use an `atlas_live_` delivery key, the error message will explicitly
+  state that read keys cannot be used for management operations.
 - Requests carry `X-API-Key` and go to `${url}/api/v1/manage/*`.
 - The key's scopes gate operations: `content:write` → create/update/delete/duplicate,
   `content:publish` → publish/unpublish/archive/schedule, `media:write` → uploads.
@@ -35,15 +83,20 @@ await w.create({ slug: "hello", data: { title: "Hello", body: "..." } });
 // Field value formats (richtext = Tiptap HTML, relation/image = UUIDs, ...):
 //   see authoring.md before composing `data`.
 
-await w.update("hello", { data: { title: "Hello v2", body: "..." } });
-// UpdateEntryInput = { slug?, data?, ... } — send the FULL data object you want stored
-
-// Localized content: pass a `translations` map as an extra key (accepted by the API
-// on both create and update; required+localizable fields MUST live here, not in data):
+// update() is a FULL REPLACE of `data` (and of each locale in `translations`) — it does
+// NOT merge. To change only one field, you MUST read the current entry first and spread
+// its existing data/translations, or you will silently drop every other field:
+const readClient = createDeliveryClient<AtlasContentTypes>({ url, token: deliveryKey });
+const current = await readClient.entries("news-article").get("hello");
 await w.update("hello", {
-  data: fullBaseData,
-  translations: { de: { data: { title: "Hallo" } }, ja: { data: { title: "こんにちは" } } },
+  data: { ...current.data, category: "updated-category" },
+  translations: {
+    ...current.translations,
+    de: { data: { ...current.translations?.de?.data, title: "Hallo Welt" } },
+  },
 });
+// UpdateEntryInput = { slug?, data?, translations?, ... } — required+localizable fields
+// MUST live under translations[locale].data, not in the base `data` object.
 
 await w.publish("hello");                            // PATCH .../publish
 await w.unpublish("hello");                          // PATCH .../unpublish

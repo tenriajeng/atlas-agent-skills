@@ -1,6 +1,6 @@
 ---
 name: atlas-cms
-description: Use when integrating with or operating Atlas CMS - fetching entries, pages, blocks or media into a frontend, generating TypeScript types from a workspace schema, writing/publishing/scheduling content programmatically, uploading media, or operating content through the Atlas MCP tools (list_entries, create_entry, publish_page, etc.). Trigger on mentions of Atlas CMS, @latellu/atlas-sdk, @latellu/atlas-cli, atlas_live_/atlas_mgmt_ API keys, or api.atlas.latellu.com.
+description: Use for any task that touches Atlas CMS, however casually phrased - fetching entries, pages, blocks or media into a frontend, generating/gen-ing TypeScript types from a workspace schema, writing/publishing/scheduling/pushing content programmatically, uploading media, or operating content through the Atlas MCP tools (list_entries, create_entry, publish_page, etc.). Always trigger on any mention of Atlas CMS, @latellu/atlas-sdk, @latellu/atlas-cli, atlas_live_/atlas_mgmt_ API keys, or api.atlas.latellu.com - including quick/informal asks like "gen the types for our repo" or "push some content into atlas real quick" - rather than answering from general knowledge, which risks hallucinating wrong package names or endpoints.
 ---
 
 # Atlas CMS
@@ -84,6 +84,11 @@ types, then build the page"), route each sub-task to its own single reference.
 Choosing between MCP and the management SDK for writes: MCP is for operating content
 interactively in an agent session (one-off edits, content entry, audits); the SDK is for
 code that outlives the session (migrations, sync jobs, backends) and for structured per-field error objects.
+This is about scale and recoverability, not run count: if the task touches more than a
+handful of entries, needs to survive partial failure and be safely re-run, or needs
+structured per-field error handling, that's the SDK management client — even if you'll
+only run it once. A 200-entry backfill script is an SDK job; MCP's "one-off" framing
+means a few manual edits typed out in conversation, not a bulk script.
 
 ## Hard capability boundaries (don't go looking for these)
 

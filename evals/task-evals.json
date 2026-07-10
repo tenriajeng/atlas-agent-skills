@@ -1,0 +1,365 @@
+{
+  "skill_name": "atlas-cms",
+  "evals": [
+    {
+      "id": "mcp-update-full-replace",
+      "surface": "mcp",
+      "reference_file": "skills/atlas-cms/references/mcp.md",
+      "gotcha": "update_entry is a full replace of data; requires read-modify-write",
+      "live": true,
+      "prompt": "Using the Atlas MCP tools: call get_workspace_schema, pick a non-block content type suitable for a throwaway test entry, and create an entry with slug 'eval-test-mcp-update-<random4>' and data { title: \"Eval Original Title\" } plus any other required fields filled with placeholder values. Then, without losing the title, update the entry so a 'body' field (or the closest text field available) is set to \"Eval Updated Body\" — the title must still read \"Eval Original Title\" afterward. Finally delete the entry you created.",
+      "expected_output": "Agent creates the entry, then calls update_entry with the FULL data object (original title + new body/field), not a partial object containing only the changed field. It reads the entry back (or reuses its own create response) to reconstruct the full object before updating.",
+      "assertions": [
+        { "text": "update_entry's echoed response data.title still equals 'Eval Original Title'", "type": "output" },
+        { "text": "agent did not call update_entry with a data object missing the title key", "type": "behavioral" },
+        { "text": "agent called get_entry or reused the create response to reconstruct the full object before calling update_entry", "type": "behavioral" }
+      ],
+      "fixture": { "slug_prefix": "eval-test-mcp-update-" },
+      "cleanup": {
+        "required": true,
+        "run_condition": "always",
+        "steps": [{ "tool": "delete_entry", "args": { "content_type": "<discovered>", "slug": "<created-slug>" } }]
+      }
+    },
+    {
+      "id": "mcp-blockless-publish",
+      "surface": "mcp",
+      "reference_file": "skills/atlas-cms/references/mcp.md",
+      "gotcha": "a page with 0 blocks cannot publish; agent must not blind-retry the same call expecting a different result",
+      "live": true,
+      "prompt": "Using the Atlas MCP tools, create a page with slug 'eval-test-mcp-blockless-<random4>' and no blocks, then call publish_page on it. Handle whatever happens sensibly. Finally delete the page you created.",
+      "expected_output": "publish_page fails with a clear error about requiring at least one block. The agent does NOT retry publish_page hoping for a different result; it either explains the requirement to the user or adds a minimal block via update_page and then republishes.",
+      "assertions": [
+        { "text": "agent did not call publish_page more than twice against the same unmodified page (i.e. no blind retry loop)", "type": "behavioral" },
+        { "text": "agent's final response correctly attributes the failure to the page having no blocks, not to an unrelated cause", "type": "output" }
+      ],
+      "fixture": { "slug_prefix": "eval-test-mcp-blockless-" },
+      "cleanup": {
+        "required": true,
+        "run_condition": "always",
+        "steps": [{ "tool": "delete_page", "args": { "slug": "<created-slug>" } }]
+      }
+    },
+    {
+      "id": "mcp-stale-idempotency-retry",
+      "surface": "mcp",
+      "reference_file": "skills/atlas-cms/references/mcp.md",
+      "gotcha": "every write sends a fresh auto-generated Idempotency-Key per call; blindly reissuing a create as a new tool call is a NEW operation, not a safe retry",
+      "live": false,
+      "prompt": "I just called create_entry for a content type 'article' with slug 'launch-day' and it seemed to hang / I'm not sure if it went through. Can you retry it for me to be safe?",
+      "expected_output": "Agent does not immediately reissue create_entry. It first checks whether the entry already exists (e.g. via get_entry on slug 'launch-day') before deciding whether a retry is safe, and explains why a blind retry of create_entry risks a duplicate/conflict.",
+      "assertions": [
+        { "text": "agent's proposed first action is a read (get_entry or equivalent check), not a repeated create_entry call", "type": "behavioral" },
+        { "text": "agent explicitly mentions that each write gets a fresh Idempotency-Key, so re-issuing create_entry is a new operation, not a safe retry of the same one", "type": "output" }
+      ]
+    },
+    {
+      "id": "mcp-key-mismatch-diagnosis",
+      "surface": "mcp",
+      "reference_file": "skills/atlas-cms/references/mcp.md",
+      "gotcha": "the MCP server never checks that the live and mgmt keys belong to the same workspace; reads succeeding while writes 404 on types you just listed is the signature symptom",
+      "live": false,
+      "prompt": "Weird bug: list_entries and get_workspace_schema both work fine and show my content types, but create_entry keeps failing with \"content type not found\" for a type I can clearly see in the schema. What's going on?",
+      "expected_output": "Agent names the live/mgmt key workspace mismatch as the leading hypothesis (schema+reads come from workspace A via the live key, while the mgmt key belongs to workspace B), and suggests verifying both keys were minted for the same workspace, before other explanations.",
+      "assertions": [
+        { "text": "agent's top hypothesis is a live/mgmt key pair pointing at different workspaces", "type": "output" },
+        { "text": "agent does not suggest the content type itself is broken/missing as the primary explanation, given it's visible in the schema", "type": "output" }
+      ]
+    },
+    {
+      "id": "mcp-drafts-invisible-live-key",
+      "surface": "mcp",
+      "reference_file": "skills/atlas-cms/references/mcp.md",
+      "gotcha": "list_entries(status=\"draft\") returning empty with a live key means key scoping, not an empty workspace",
+      "live": false,
+      "prompt": "I called list_entries with status=\"draft\" using our read-only API key and got zero results back, but I know we have draft articles sitting in the dashboard. Is the workspace broken?",
+      "expected_output": "Agent explains that a live/delivery key (atlas_live_*) can never see draft content by design — no query parameter reveals drafts to a live key — and that a management key is needed to list drafts, rather than concluding the workspace or data is broken.",
+      "assertions": [
+        { "text": "agent identifies the live key's read-only/published-only scoping as the cause, not a data or workspace problem", "type": "output" },
+        { "text": "agent recommends using a management key to see drafts", "type": "output" }
+      ]
+    },
+    {
+      "id": "mcp-media-upload-validate",
+      "surface": "mcp",
+      "reference_file": "skills/atlas-cms/references/mcp.md",
+      "gotcha": "upload_media pre-validates client-side (≤10MB, extension allowlist) before uploading",
+      "live": true,
+      "prompt": "Using the Atlas MCP tools, upload the file at /Users/ilham/atlas/atlas-agent-skills/evals/fixtures/eval-test-pixel.png as media with alt_text \"[eval-test] 1x1 pixel\" and folder \"/eval-test/\". Confirm the upload succeeded, then delete the uploaded media.",
+      "expected_output": "Agent calls upload_media with the given path/alt_text/folder, gets back a media asset id, and then calls delete_media on that id.",
+      "assertions": [
+        { "text": "upload_media call succeeds and returns a media id", "type": "output" },
+        { "text": "delete_media is called on the same id that was returned by upload_media", "type": "behavioral" }
+      ],
+      "fixture": { "file_path": "evals/fixtures/eval-test-pixel.png" },
+      "cleanup": {
+        "required": true,
+        "run_condition": "always",
+        "steps": [{ "tool": "delete_media", "args": { "id": "<uploaded-id>" } }]
+      }
+    },
+    {
+      "id": "mcp-bulk-delete-uuid-not-slug",
+      "surface": "mcp",
+      "reference_file": "skills/atlas-cms/references/mcp.md",
+      "gotcha": "bulk_delete_entries takes entry UUIDs, not slugs; agent must not generalize to list-and-bulk-delete-by-pattern against a real workspace",
+      "live": true,
+      "prompt": "Using the Atlas MCP tools: get_workspace_schema, pick a non-block content type, then create exactly two throwaway entries with slugs 'eval-test-bulk-a-<random4>' and 'eval-test-bulk-b-<random4>'. Then bulk delete both of them in a single bulk_delete_entries call.",
+      "expected_output": "Agent creates the two entries, captures their UUIDs (ids) from the create responses, and calls bulk_delete_entries with ids = exactly those two UUIDs — not slugs, and not a list derived from a broader list_entries query.",
+      "assertions": [
+        { "text": "bulk_delete_entries.ids is an array of exactly 2 UUIDs", "type": "output" },
+        { "text": "both ids passed to bulk_delete_entries match the ids returned by the two preceding create_entry calls in this same transcript", "type": "behavioral" },
+        { "text": "agent did not call list_entries and pass slug-pattern-matched results into bulk_delete_entries", "type": "behavioral" }
+      ],
+      "fixture": { "slug_prefix": "eval-test-bulk-" },
+      "cleanup": {
+        "required": false,
+        "run_condition": "n/a",
+        "steps": [],
+        "notes": "the bulk_delete_entries call under test IS the cleanup for this case; no separate teardown needed if it succeeds. If it fails, main session must verify no eval-test-bulk-* entries remain via list_entries and delete manually."
+      }
+    },
+    {
+      "id": "sdk-delivery-locale-merge-shape-branch",
+      "surface": "sdk-delivery",
+      "reference_file": "skills/atlas-cms/references/sdk-delivery.md",
+      "gotcha": "image/relation field values are raw UUIDs on API-written content but may be raw URLs on legacy/imported data — code must branch on shape, not assume one",
+      "live": false,
+      "prompt": "Write a Next.js server component snippet using @latellu/atlas-sdk that fetches an 'article' entry by slug and renders its cover_image field as an <img> src. The workspace has a mix of entries created via the dashboard/API (image field holds a media UUID) and older imported entries (image field holds a direct URL).",
+      "expected_output": "Code branches on the value shape (e.g. value.startsWith(\"http\") ? use directly : atlas.media.get(id) then resolve its URL) rather than assuming the field is always a UUID or always a URL.",
+      "assertions": [
+        { "text": "generated code checks whether the cover_image value looks like a URL before deciding whether to call atlas.media.get", "type": "output" },
+        { "text": "generated code does not assume cover_image is always a resolved URL object", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-delivery-cursor-past-1000",
+      "surface": "sdk-delivery",
+      "reference_file": "skills/atlas-cms/references/sdk-delivery.md",
+      "gotcha": "offset pagination caps at page 1000 (PAGE_TOO_DEEP); iterating a large dataset requires switching to cursor pagination via raw.get + meta.next_cursor",
+      "live": false,
+      "prompt": "Write a script using @latellu/atlas-sdk that iterates through every entry of a content type that has roughly 50,000 published entries, to build a full-text search index.",
+      "expected_output": "Code does not naively loop atlas.entries(type).list({page: n++}) forever — it either caps at page 1000 and switches to atlas.raw.get with meta.next_cursor for anything beyond that, or uses cursor pagination from the start.",
+      "assertions": [
+        { "text": "generated code uses atlas.raw.get with cursor-based pagination (meta.next_cursor) rather than only incrementing page past the documented 1000-page limit", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-delivery-429-manual-backoff",
+      "surface": "sdk-delivery",
+      "reference_file": "skills/atlas-cms/references/sdk-delivery.md",
+      "gotcha": "the delivery client does NOT auto-retry 429s (unlike the management client) — callers must back off themselves",
+      "live": false,
+      "prompt": "I'm using @latellu/atlas-sdk's delivery client to bulk-read a few thousand entries in a loop for a nightly export job, and it's occasionally getting rate limited. Make the loop robust to that.",
+      "expected_output": "Agent adds explicit retry/backoff logic around the delivery client's calls (catching AtlasError, checking e.status === 429, exponential backoff), rather than assuming the SDK already retries — and ideally notes that this is because the delivery client, unlike the management client, does not auto-retry 429s.",
+      "assertions": [
+        { "text": "generated code includes explicit retry/backoff handling for 429 responses from the delivery client", "type": "output" },
+        { "text": "agent does not claim the delivery client already handles 429 retries automatically", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-delivery-caching-knob",
+      "surface": "sdk-delivery",
+      "reference_file": "skills/atlas-cms/references/sdk-delivery.md",
+      "gotcha": "the SDK has no built-in cache option; caching behavior must be set explicitly via a custom fetchImpl",
+      "live": false,
+      "prompt": "Dashboard edits to my Atlas content aren't showing up on my live Next.js site — it seems to be serving stale data. I'm using the default atlas.entries(...).get() call with no special config. Why, and how do I fix it?",
+      "expected_output": "Agent explains the SDK issues a plain fetch with no cache directive, so caching follows Next.js's default fetch behavior, and fixes it by passing a custom fetchImpl (e.g. cache: \"no-store\") plus export const dynamic = \"force-dynamic\" if needed — not by looking for a caching option on createClient that doesn't exist.",
+      "assertions": [
+        { "text": "agent does not suggest a cache/staleTime option on createClient or the entries().get() call itself", "type": "output" },
+        { "text": "fix involves passing a custom fetchImpl to createClient", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-mgmt-full-replace-translations",
+      "surface": "sdk-management",
+      "reference_file": "skills/atlas-cms/references/sdk-management.md",
+      "gotcha": "update() is a full replace of data; required+localizable fields must live in translations, not data",
+      "live": false,
+      "prompt": "Write a TypeScript snippet using @latellu/atlas-sdk/management to update an existing 'article' entry: change its category (base-locale field), and also set the German translation of its title (title is required and localizable) to \"Hallo Welt\", without touching other existing fields.",
+      "expected_output": "Code reads the entry first (read-modify-write), calls update() with the FULL data object (existing fields + new category), and passes title translation via the translations map ({ de: { data: { title: \"Hallo Welt\" } } }) rather than putting a German string into the base data.title.",
+      "assertions": [
+        { "text": "generated code reads the existing entry before calling update(), to avoid dropping fields on the full-replace data object", "type": "output" },
+        { "text": "the German title goes into a translations.de.data.title key, not into the base data object", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-mgmt-idempotency-key-import",
+      "surface": "sdk-management",
+      "reference_file": "skills/atlas-cms/references/sdk-management.md",
+      "gotcha": "the idempotencyKey option exists specifically so retry logic doesn't double-create/double-publish",
+      "live": false,
+      "prompt": "Write an idempotent import script using @latellu/atlas-sdk/management that creates an Atlas entry for each row of a CSV of products, safe to re-run if it crashes partway through.",
+      "expected_output": "Code passes a stable idempotencyKey derived from each row's unique id (e.g. `import-${row.id}`) to create(), and/or checks for existing entries via the delivery client before creating, so re-running the script doesn't double-create entries.",
+      "assertions": [
+        { "text": "generated code passes an idempotencyKey option to the create() call, derived from a stable per-row identifier", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-mgmt-429-already-retried",
+      "surface": "sdk-management",
+      "reference_file": "skills/atlas-cms/references/sdk-management.md",
+      "gotcha": "the management client already auto-retries 429s (hardcoded, exponential backoff up to 3 retries) — adding your own retry wrapper around it is redundant/conflicting, unlike the delivery client",
+      "live": false,
+      "prompt": "Should I wrap my @latellu/atlas-sdk/management calls in my own retry-on-429 logic, the same way I did for the delivery client reads?",
+      "expected_output": "Agent explains that, unlike the delivery client, the management client already auto-retries 429s internally (exponential backoff, up to 3 retries, hardcoded), so adding another retry layer on top is unnecessary and could compound backoff delay or interfere with idempotency assumptions.",
+      "assertions": [
+        { "text": "agent states the management client already retries 429s automatically and does not recommend duplicating that logic", "type": "output" },
+        { "text": "agent contrasts this with the delivery client, which does need manual retry handling", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-mgmt-validation-error-detail",
+      "surface": "sdk-management",
+      "reference_file": "skills/atlas-cms/references/sdk-management.md",
+      "gotcha": "AtlasError from the management client carries structured per-field detail in e.errors[] on VALIDATION_ERROR",
+      "live": false,
+      "prompt": "Write error handling for a create() call using @latellu/atlas-sdk/management that shows the user exactly which field(s) failed validation, not just a generic error message.",
+      "expected_output": "Code catches AtlasError, checks e.code === \"VALIDATION_ERROR\", and iterates e.errors (each with field + message) to surface field-specific messages, rather than just showing e.message generically.",
+      "assertions": [
+        { "text": "generated error handling accesses e.errors (per-field array) when e.code is VALIDATION_ERROR", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-mgmt-effect-fiberfailure",
+      "surface": "sdk-management",
+      "reference_file": "skills/atlas-cms/references/sdk-management.md",
+      "gotcha": "the Effect-native variant wraps rejected errors in a FiberFailure when run via Effect.runPromise; recovering the original AtlasError needs Runtime.isFiberFailure + Cause.squash",
+      "live": false,
+      "prompt": "I'm using @latellu/atlas-sdk/management/effect's makeManagementClient, composing it with other Effects, and running the whole thing with Effect.runPromise. My catch block isn't getting the AtlasError I expect — it's getting something else entirely. What's happening and how do I fix it?",
+      "expected_output": "Agent explains that Effect.runPromise rejects with a FiberFailure wrapper, not the raw AtlasError, when errors come from composed Effects (unlike the plain Promise surface, which unwraps this internally) — and shows recovering the original error via Runtime.isFiberFailure + Cause.squash.",
+      "assertions": [
+        { "text": "agent names FiberFailure as the wrapper being received instead of the raw AtlasError", "type": "output" },
+        { "text": "fix uses Runtime.isFiberFailure and Cause.squash to recover the original error", "type": "output" }
+      ]
+    },
+    {
+      "id": "sdk-mgmt-config-error-sync-throw",
+      "surface": "sdk-management",
+      "reference_file": "skills/atlas-cms/references/sdk-management.md",
+      "gotcha": "createManagementClient throws synchronously (ManagementConfigError) on a non-atlas_mgmt_ token — must wrap the constructor call itself, not just the awaited calls",
+      "live": false,
+      "prompt": "Someone on my team pasted an atlas_live_ key into the management client config by mistake and it crashed the whole server process on startup instead of failing gracefully. How should this be handled?",
+      "expected_output": "Agent explains createManagementClient validates the token prefix synchronously and throws ManagementConfigError immediately (not an awaited rejection), so the fix is wrapping the createManagementClient(...) call itself in try/catch, not just the later await calls.",
+      "assertions": [
+        { "text": "agent identifies that createManagementClient throws synchronously on construction, not only on later awaited calls", "type": "output" },
+        { "text": "fix wraps the createManagementClient(...) call in try/catch, not just the subsequent method calls", "type": "output" }
+      ]
+    },
+    {
+      "id": "cli-typegen-key-class-401",
+      "surface": "cli-typegen",
+      "reference_file": "skills/atlas-cms/references/cli-typegen.md",
+      "gotcha": "typegen needs a live (delivery) key; a management key returns 401",
+      "live": false,
+      "prompt": "Running `npx @latellu/atlas-cli generate --api-key=atlas_mgmt_xxx --output=./lib/atlas.types.ts` and getting a 401. The key definitely works for other things. Why would typegen reject it?",
+      "expected_output": "Agent identifies that typegen calls the public schema endpoint, which requires a live key (atlas_live_*); a management key is the wrong key class for this operation and always 401s here regardless of validity.",
+      "assertions": [
+        { "text": "agent identifies the key class (mgmt vs live) as the cause of the 401, not key validity/expiry", "type": "output" }
+      ]
+    },
+    {
+      "id": "cli-typegen-stale-types-silent",
+      "surface": "cli-typegen",
+      "reference_file": "skills/atlas-cms/references/cli-typegen.md",
+      "gotcha": "stale generated types don't fail at runtime — the SDK sends whatever the API returns; mismatches show up as compile-time errors or silently-missing fields, not runtime exceptions",
+      "live": false,
+      "prompt": "We added a new field to a content type in the Atlas dashboard last week, and our frontend code accessing article.data.newField silently returns undefined even though the dashboard shows the field has values. No errors anywhere. What should I check first?",
+      "expected_output": "Agent's first suggestion is to regenerate the TypeScript types (they're stale relative to the schema change) rather than debugging the SDK/API — and explains stale types fail silently (missing/undefined fields), not with runtime errors, so this is easy to miss.",
+      "assertions": [
+        { "text": "agent's first recommended action is regenerating types via atlas-cli, before other debugging", "type": "output" },
+        { "text": "agent explains stale types fail silently rather than throwing a runtime error", "type": "output" }
+      ]
+    },
+    {
+      "id": "authoring-richtext-tiptap-not-markdown",
+      "surface": "authoring",
+      "reference_file": "skills/atlas-cms/references/authoring.md",
+      "gotcha": "richtext fields must be Tiptap HTML strings, not markdown",
+      "live": true,
+      "prompt": "Using the Atlas MCP tools: get_workspace_schema, find a non-block content type. If it has a richtext-typed field use that; if not, use any text field (the API doesn't strictly enforce field types, so this still tests your judgment). Create a test entry (slug 'eval-test-richtext-<random4>') whose value for that field is: an intro paragraph with **bold** text and a [a link](https://example.com), written the way it should actually be stored for a richtext field. Then delete the entry.",
+      "expected_output": "The richtext field's stored value is Tiptap-style HTML (e.g. <p>...<strong>bold</strong>...<a href=\"https://example.com\">a link</a></p>), not raw markdown syntax like **bold** or [text](url).",
+      "assertions": [
+        { "text": "the richtext value sent in create_entry's data does not contain literal markdown syntax like ** or [text](url)", "type": "output" },
+        { "text": "the richtext value sent in create_entry's data contains HTML tags such as <strong> and <a href=...>", "type": "output" }
+      ],
+      "fixture": { "slug_prefix": "eval-test-richtext-" },
+      "cleanup": {
+        "required": true,
+        "run_condition": "always",
+        "steps": [{ "tool": "delete_entry", "args": { "content_type": "<discovered>", "slug": "<created-slug>" } }]
+      }
+    },
+    {
+      "id": "authoring-relation-image-uuid-not-slug",
+      "surface": "authoring",
+      "reference_file": "skills/atlas-cms/references/authoring.md",
+      "gotcha": "relation and image field values must be entry/media UUIDs, not slugs — slugs are rejected by the API",
+      "live": false,
+      "prompt": "I want to create an 'article' entry whose 'author' field (a relation to the 'author' content type) points to the author with slug 'jane-doe'. Write the create_entry call / SDK code for this.",
+      "expected_output": "Agent's plan resolves 'jane-doe' to the author entry's UUID first (e.g. via get_entry or entries().get(\"jane-doe\") to read its id), then uses that UUID as the relation field's value — it does not write the literal slug string into the relation field.",
+      "assertions": [
+        { "text": "agent's plan/code includes a step to resolve the author slug to its entry UUID before writing the relation field", "type": "output" },
+        { "text": "the relation field value used in the final create/update call is a UUID, not the literal string 'jane-doe'", "type": "output" }
+      ]
+    },
+    {
+      "id": "authoring-write-plane-no-read-trick",
+      "surface": "authoring",
+      "reference_file": "skills/atlas-cms/references/authoring.md",
+      "gotcha": "the management plane has no read endpoints; a no-op update_page({slug}) (or PUT with empty body) is the only way to read current page state without a live key",
+      "live": true,
+      "prompt": "Using only the Atlas MCP tools with a management key (assume no live key is available), create a page with slug 'eval-test-noread-<random4>', then confirm its current status/seo without using any live-key-only tool. Finally delete the page.",
+      "expected_output": "Agent calls update_page with the slug and no other changed fields (a no-op update) to get the page's current state back in the response, rather than inventing a GET-style call that doesn't exist on the management plane.",
+      "assertions": [
+        { "text": "agent uses a no-op update_page call (slug only, no other fields changed) to read back current state", "type": "behavioral" },
+        { "text": "agent does not claim there is a dedicated read/get tool on the management plane", "type": "output" }
+      ],
+      "fixture": { "slug_prefix": "eval-test-noread-" },
+      "cleanup": {
+        "required": true,
+        "run_condition": "always",
+        "steps": [{ "tool": "delete_page", "args": { "slug": "<created-slug>" } }]
+      }
+    },
+    {
+      "id": "boundary-schema-dashboard-only",
+      "surface": "router",
+      "reference_file": "skills/atlas-cms/SKILL.md",
+      "gotcha": "schema (content types, fields, block types) is dashboard-only — no API/SDK/CLI/MCP surface creates it",
+      "live": false,
+      "prompt": "Can you create a new content type called 'Testimonial' in our Atlas workspace, with fields for author name, quote, and rating?",
+      "expected_output": "Agent explains schema creation is dashboard-only (cms.atlas.latellu.com) and cannot be done via any API/SDK/CLI/MCP surface, and asks the user to create it there — it does not attempt to hallucinate a create_content_type tool/endpoint or fake the operation.",
+      "assertions": [
+        { "text": "agent does not attempt to call a nonexistent content-type-creation tool or endpoint", "type": "behavioral" },
+        { "text": "agent clearly states this must be done in the dashboard", "type": "output" }
+      ]
+    },
+    {
+      "id": "boundary-no-field-value-filter",
+      "surface": "router",
+      "reference_file": "skills/atlas-cms/SKILL.md",
+      "gotcha": "public list endpoints filter only by type/locale/page/sort — there is no field-value query filter anywhere in the API",
+      "live": false,
+      "prompt": "Using @latellu/atlas-sdk, write code to fetch all 'article' entries where category = \"News\".",
+      "expected_output": "Agent's code lists entries (paging as needed) and filters by category client-side in JS/TS, rather than trying to pass a category filter parameter to entries().list() (which doesn't support field-value filters).",
+      "assertions": [
+        { "text": "generated code does not pass a field-value filter parameter (e.g. category) into entries().list()", "type": "output" },
+        { "text": "generated code filters the returned items array client-side by category", "type": "output" }
+      ]
+    },
+    {
+      "id": "router-mcp-vs-sdk-selection",
+      "surface": "router",
+      "reference_file": "skills/atlas-cms/SKILL.md",
+      "gotcha": "MCP is for interactive in-session content ops; the SDK (management client) is for code that outlives the session — mixed asks should route each sub-task to the right surface",
+      "live": false,
+      "prompt": "Two things: (1) build a Next.js page that renders our published blog posts from Atlas, and (2) I also need a one-off script to backfill a new 'reading_time' field on our existing 200 article entries by computing it from their body text.",
+      "expected_output": "Agent routes (1) to the SDK delivery client (frontend rendering, code that outlives the session) and (2) to the SDK management client (a backfill script, not interactive one-off editing) — not to MCP tools for either, and not to the same reference file for both if they genuinely differ.",
+      "assertions": [
+        { "text": "agent uses the SDK delivery client (not MCP) for rendering published posts in the Next.js page", "type": "output" },
+        { "text": "agent uses the SDK management client (not MCP tool calls) for the 200-entry backfill script", "type": "output" }
+      ]
+    }
+  ]
+}
