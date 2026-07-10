@@ -1,5 +1,9 @@
 # Using the Atlas skill outside Claude Code
 
+> New to Atlas or MCP? Read the [README](../README.md) first — it explains what MCP is
+> and the difference between `atlas_live_` (read-only) and `atlas_mgmt_` (read/write)
+> keys before you get here.
+
 The skill is plain markdown (`skills/atlas-cms/SKILL.md` + `references/`), so any AI
 coding agent can consume it. Install the package into your project, then point your
 agent at it.
@@ -39,8 +43,10 @@ file it routes you to.
 
 ## MCP server (any MCP-capable agent)
 
-The Atlas MCP server is a separate npm package (`@latellu/atlas-mcp`, stdio). Register it
-with your agent's MCP configuration:
+"Registering an MCP server" means telling your agent to launch this process and use the
+tools it exposes (list entries, publish page, etc.) — it's the same two API keys as
+above, just read by a different process. The Atlas MCP server is a separate npm package
+(`@latellu/atlas-mcp`, stdio). Register it with your agent's MCP configuration:
 
 ```json
 {

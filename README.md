@@ -4,6 +4,8 @@ Agent skill + MCP configuration for **[Atlas CMS](https://docs.atlas.latellu.com
 
 The skill itself is plain markdown ([`skills/atlas-cms/SKILL.md`](skills/atlas-cms/SKILL.md) plus per-surface references), so it works with **any** AI coding agent. This repo also packages it as a Claude Code plugin with the Atlas MCP server pre-wired.
 
+**New to MCP?** MCP (Model Context Protocol) is just the plug-in standard that lets your AI agent call a tool directly — installing "the Atlas MCP server" gives your agent tools like "list entries" or "publish page" it can call on its own, instead of you copy-pasting API calls for it.
+
 ## Claude Code
 
 ```bash
@@ -11,14 +13,29 @@ claude plugin marketplace add tenriajeng/atlas-agent-skills
 claude plugin install atlas@latellu
 ```
 
-Then set your credentials in the shell where you run `claude`:
+### Get your API keys
+
+Atlas uses two separate keys so a read-only integration can never accidentally write:
+
+- **`atlas_live_...`** — read-only. Fetches published content (blog posts, pages, media). Use this if your agent only needs to *display* content.
+- **`atlas_mgmt_...`** — read/write. Lets your agent create, edit, and publish content. Only create this if you want your agent to make changes for you.
+
+To create them: go to [cms.atlas.latellu.com/dashboard/api-keys](https://cms.atlas.latellu.com/dashboard/api-keys), log in to (or create) your workspace, click **New API key**, pick the key type above, and copy the value shown — it's only shown once.
+
+Then set them in the shell where you run `claude`:
 
 ```bash
 export ATLAS_LIVE_API_KEY="atlas_live_xxx..."   # read tools
 export ATLAS_MGMT_API_KEY="atlas_mgmt_xxx..."   # write tools
 ```
 
-Create keys at [cms.atlas.latellu.com/dashboard/api-keys](https://cms.atlas.latellu.com/dashboard/api-keys). Full guide: [docs.atlas.latellu.com/docs/agent-skill](https://docs.atlas.latellu.com/docs/agent-skill).
+Add these two `export` lines to your shell profile (`~/.zshrc` or `~/.bashrc`) if you want them available in every new terminal, not just the current session.
+
+### Verify it worked
+
+Start `claude` in your project and ask it something like *"list the content types in my Atlas workspace"*. If it calls an Atlas tool and returns a real answer, setup is complete. If it says it has no Atlas tools available, double check the plugin installed (`claude plugin install atlas@latellu` again) and that both env vars are set in that same shell (`echo $ATLAS_LIVE_API_KEY`).
+
+Full guide: [docs.atlas.latellu.com/docs/agent-skill](https://docs.atlas.latellu.com/docs/agent-skill).
 
 ## Other agents (Cursor, Codex, opencode, Gemini CLI, ...)
 
